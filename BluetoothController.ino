@@ -17,7 +17,10 @@
 #endif
 
 #define LED_BUILTIN 2
-
+#define pinMotorForward 16
+#define pinMotorBack 17
+#define pinMotorLeft 18
+#define pinMotorRight 19
 
 BluetoothSerial SerialBT;
 char codigo = ' ';
@@ -33,6 +36,15 @@ int SIZEPASS = 4;
 char myString[] = {};
 char estado = 'C';
 String strBT = "";
+/*
+int cuentaForward = 0;
+int cuentaBack = 0;
+int cuentaLeft = 0;
+int cuentaRight = 0;
+*/
+
+int cuentaForwardBack = 0;
+int cuentaLeftRight = 0;
 
 
 //----------Funciones------------
@@ -43,6 +55,8 @@ void validarClave(void);
 
 void switchCaseParametros(char, String);
 
+void accionarMotor(char, int);
+
 void setup() {
     
 	Serial.begin(115200);
@@ -51,6 +65,10 @@ void setup() {
     //validarClave();
       
     pinMode(LED_BUILTIN, OUTPUT);
+	pinMode(pinMotorBack, OUTPUT);
+	pinMode(pinMotorForward, OUTPUT);
+	pinMode(pinMotorLeft, OUTPUT);
+	pinMode(pinMotorRight, OUTPUT);
 
   
 }
@@ -68,59 +86,23 @@ void maquinaDeEstado(void){
 
 		strBT = SerialBT.readStringUntil('\n');//lee del puerto serie
 
+
+
 		char param = strBT.charAt(0);//obtiene el parámetro
-		String valor = strBT.substring(1);//obtiene el valor
+		//String valor = strBT.substring(1);//obtiene el valor
 
 		Serial.print("comando = ");
 		Serial.println(param);
-		Serial.print("valor = ");
-		Serial.println(valor);
 
-		switchCaseParametros(param, valor);//resuelve en base al parámetro y valor pasados
+		//Serial.print("valor = ");
+		//Serial.println(valor);
+
+		switchCaseParametros(param, "1");//resuelve en base al parámetro y valor pasados
 
 		strBT = "";//se deja limpio para la próxima lectura
 
 	}
-
-		/*
-
-		if(strBT == "F100"){
-
-			digitalWrite(LED_BUILTIN, HIGH);
-			Serial.println("F100");
-
-		}else if(strBT == "R100"){
-
-			digitalWrite(LED_BUILTIN, LOW);
-			Serial.println("R100");
-
-		}else{
-			
-			Serial.println("Valor invalido");
-
-		}
-		*/
-
-
-
-/*
-		switch(strBT.compareTo("hola")){
-
-			case 0:
-				Serial.println("hola");
-
-			break;
-			case -1:
-				Serial.println("no es hola");
-
-			break;
-			default:
-				Serial.println("valor invalido");
-			break;
-		}
-*/
-
-    
+   
   
 }
 
@@ -215,14 +197,83 @@ void switchCaseParametros(char charParamID, String valorParam){
 
   switch(charParamID){
     case 'F':
-      velocidad = valorParam.toInt();
-      Serial.print("F velocidad: ");
-      Serial.println(velocidad);
+		if(cuentaForwardBack < 5){//aumenta o disminuye solo si esta dentro del rango permitido
+			cuentaForwardBack++;
+		}
+		
+		Serial.print("F: ");
+		Serial.println(cuentaForwardBack);
+
+		if(cuentaForwardBack == 5){
+
+			Serial.println("F Maxima");
+			SerialBT.println("F Maxima");
+
+		}
+
+		accionarMotor(charParamID, cuentaForwardBack);
+
+      //velocidad = valorParam.toInt();
+      //Serial.print("F velocidad: ");
+      //Serial.println(velocidad);
+    break;
+    case 'B':
+		if(cuentaForwardBack > -5){//aumenta o disminuye solo si esta dentro del rango permitido
+			cuentaForwardBack--;
+		}
+		
+		Serial.print("B: ");
+		Serial.println(cuentaForwardBack);
+
+
+	  	if(cuentaForwardBack == -5){
+			
+			Serial.println("B Maxima");
+			SerialBT.println("B Maxima");
+
+		}
+
+		accionarMotor(charParamID, cuentaForwardBack);	
+    break;
+
+    case 'L':
+		if(cuentaLeftRight > -5){//aumenta o disminuye solo si esta dentro del rango permitido
+			cuentaLeftRight--;
+		}
+		
+		Serial.print("L: ");
+		Serial.println(cuentaLeftRight);
+
+		if(cuentaLeftRight == -5){
+
+			Serial.println("L Maxima");
+			SerialBT.println("L Maxima");
+
+		}
+
+		accionarMotor(charParamID, cuentaLeftRight);
+
+      //velocidad = valorParam.toInt();
+      //Serial.print("F velocidad: ");
+      //Serial.println(velocidad);
     break;
     case 'R':
-      velocidad = valorParam.toInt();
-      Serial.print("R velocidad: ");
-      Serial.println(velocidad);
+		if(cuentaLeftRight < 5){//aumenta o disminuye solo si esta dentro del rango permitido
+			cuentaLeftRight++;
+		}
+		
+		Serial.print("R: ");
+		Serial.println(cuentaLeftRight);
+
+
+	  	if(cuentaLeftRight == 5){
+			
+			Serial.println("R Maxima");
+			SerialBT.println("R Maxima");
+
+		}	
+
+		accionarMotor(charParamID, cuentaLeftRight);
     break;
 
 
@@ -231,4 +282,50 @@ void switchCaseParametros(char charParamID, String valorParam){
     break;
 
   }  
+}
+
+
+void accionarMotor(char param, int cuenta){
+
+	switch (param)
+	{
+	case 'F':
+		//apagar LEDs de señalizadores que no corresponden y encender el indicado
+		digitalWrite(pinMotorLeft, LOW);
+		digitalWrite(pinMotorRight, LOW);
+		digitalWrite(pinMotorBack, LOW);
+		digitalWrite(pinMotorForward, HIGH);
+
+	break;
+	case 'B':
+		//apagar LEDs de señalizadores que no corresponden y encender el indicado
+		digitalWrite(pinMotorLeft, LOW);
+		digitalWrite(pinMotorRight, LOW);
+		digitalWrite(pinMotorBack, HIGH);
+		digitalWrite(pinMotorForward, LOW);
+
+	break;
+	case 'L':
+		//apagar LEDs de señalizadores que no corresponden y encender el indicado
+		digitalWrite(pinMotorLeft, HIGH);
+		digitalWrite(pinMotorRight, LOW);
+		digitalWrite(pinMotorBack, LOW);
+		digitalWrite(pinMotorForward, LOW);
+
+	break;
+	case 'R':
+		//apagar LEDs de señalizadores que no corresponden y encender el indicado
+		digitalWrite(pinMotorLeft, LOW);
+		digitalWrite(pinMotorRight, HIGH);
+		digitalWrite(pinMotorBack, LOW);
+		digitalWrite(pinMotorForward, LOW);
+
+	break;
+	
+	default:
+		break;
+	}
+
+
+
 }
