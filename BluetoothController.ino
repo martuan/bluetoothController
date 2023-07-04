@@ -23,19 +23,21 @@
 #define pinMotorRight 19
 
 BluetoothSerial SerialBT;
-char codigo = ' ';
-char PASSBTPORTON[5] = "6364";
+//char codigo = ' ';
+//char PASSBTPORTON[5] = "6364";
 //int PASSBTPORTON = 6364;
-char clave[5] = {0};
+//char clave[5] = {0};
 //int clave = 0;
 //char flagReintentar = '1';
-int digito;
-char digitoChar[] = {0};
-int i = 0;
-int SIZEPASS = 4;
-char myString[] = {};
-char estado = 'C';
+//int digito;
+//char digitoChar[] = {0};
+//int i = 0;
+//int SIZEPASS = 4;
+//char myString[] = {};
+//char estado = 'C';
 String strBT = "";
+String clave = "1234";
+int retornoClave = 0;
 /*
 int cuentaForward = 0;
 int cuentaBack = 0;
@@ -51,7 +53,7 @@ int cuentaLeftRight = 0;
 
 void maquinaDeEstado(void);
 
-void validarClave(void);
+int validarClave(void);
 
 void switchCaseParametros(char, String);
 
@@ -70,10 +72,25 @@ void setup() {
 	pinMode(pinMotorLeft, OUTPUT);
 	pinMode(pinMotorRight, OUTPUT);
 
+
+
   
 }
 
 void loop() {
+
+	while(retornoClave == 0){
+		retornoClave = validarClave();
+		
+		if(retornoClave == 1){
+			SerialBT.println("Comandos aceptados: ");
+			SerialBT.println("F, B, L, R");
+			
+		}
+		delay(10000);
+	}
+	
+	
   
     maquinaDeEstado();
 
@@ -106,64 +123,59 @@ void maquinaDeEstado(void){
   
 }
 
-void validarClave(void){
+int validarClave(void){
 
-    int ret = 0;
-    char leyenda[80] = {'\0'};
-    int j = 0;
-    char flagReintentar = '1';
-    Serial.begin(115200);
-    //SerialBT.begin("Porton Bluetooth"); //Bluetooth device name
+    char flagReintentar = 1;
+	String claveIngresada = {};
+	int cantidadReintentos = 0;
+
     Serial.println("Ingrese la clave del sistema");
-    while (SerialBT.available() == 0) {
+	SerialBT.println("Ingrese la clave del sistema");
 
-        strcpy(leyenda, "Ingrese la clave");
+	//while(flagReintentar == 1 && cantidadReintentos < 3){
 
-        for(j = 0; j < sizeof(leyenda); j++){
-            SerialBT.write(leyenda[j]);
-            Serial.println(leyenda[j]);
-        }
-        delay(3000);
-    }
-    
-    while(flagReintentar == '1'){
-      
-        i = 0;
-        while(SerialBT.available() > 0){
-            digito = SerialBT.read();//lee la clave enviada por la app (integer)
-            sprintf(digitoChar, "%c", digito);
-            clave[i] = digitoChar[0];
-            i++;  
-        }
-        clave[i] = '\0';
-        
-        Serial.println(clave);
-  
-        ret = strcmp(clave, PASSBTPORTON);
-       
-        if(ret != 0){
+		while (SerialBT.available() > 0) {
 
-            strcpy(leyenda, "Clave incorrecta, vuelva a intentarlo");
+			claveIngresada = SerialBT.readStringUntil('\n');
 
-            for(j = 0; j < sizeof(leyenda); j++){
-                SerialBT.write(leyenda[j]);
-                Serial.println(leyenda[j]);
-            }
+			//claveIngresada.replace('2','9');//Se filtra el caracter LF
+			claveIngresada.remove(4);//se agrega el NULL para cortar el string
+			//claveIngresada.replace('\n','\0');//Se filtra el caracter CR
+			//claveIngresada.setCharAt(4, '\0');//se agrega el NULL para cortar el string
+			Serial.println("CLAVE INGRESADA = ");
+			Serial.println(claveIngresada);
+			SerialBT.println("CLAVE INGRESADA = ");
+			SerialBT.println(claveIngresada);
 
-            delay(3000);
-            
-        }else{
+			if(claveIngresada == clave){
 
-            strcpy(leyenda, "Bienvenido. Presione un botón para abrir o cerrar el portón");
+				Serial.println("CLAVE CORRECTA");
+				SerialBT.println("CLAVE CORRECTA");
+				//flagReintentar = 0;
+				return 1;
 
-            for(j = 0; j < sizeof(leyenda); j++){
-                SerialBT.write(leyenda[j]);
-                Serial.println(leyenda[j]);
-            }
+			}else{
+				
+				Serial.println("CLAVE INCORRECTA, INTENTE DE NUEVO");
+				SerialBT.println("CLAVE INCORRECTA, INTENTE DE NUEVO");
+				//flagReintentar = 1;
+				//cantidadReintentos++;
+				//Serial.println("Se superó la cantidad de intentos. Debe resetear el sistema");
+				//SerialBT.println("Se superó la cantidad de intentos. Debe resetear el sistema");
+				return 0;
+			}
 
-            flagReintentar = '0';
-        }
-    }
+
+			claveIngresada = "";//se borra la clave ingresada para un futuro ingreso
+
+
+		}
+
+		return 0;
+
+
+
+	//}
 
 
   
