@@ -10,6 +10,8 @@
 #include "driver/gpio.h"
 #include  <stdio.h>
 #include  <string.h>
+#include <WiFi.h>
+
 
 
 #if !defined(CONFIG_BT_ENABLED) || !defined(CONFIG_BLUEDROID_ENABLED)
@@ -48,6 +50,8 @@ int cuentaRight = 0;
 int cuentaForwardBack = 0;
 int cuentaLeftRight = 0;
 
+String mac = {};
+
 
 //----------Funciones------------
 
@@ -62,7 +66,14 @@ void accionarMotor(char, int);
 void setup() {
     
 	Serial.begin(115200);
-	SerialBT.begin("ESP32-BTController"); //Bluetooth device name
+
+	mac = WiFi.macAddress();
+	Serial.println(mac);
+
+	String nombre = "ESP32-BTController " + mac;
+	Serial.println(nombre);
+	//SerialBT.begin("ESP32-BTController"); //Bluetooth device name
+	SerialBT.begin(nombre); //Bluetooth device name
   	Serial.println("The device started, now you can pair it with bluetooth!");
     //validarClave();
       

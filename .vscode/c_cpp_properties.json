@@ -220,6 +220,7 @@
                 "/home/martin/.arduino15/packages/esp32/hardware/esp32/2.0.9/cores/esp32",
                 "/home/martin/.arduino15/packages/esp32/hardware/esp32/2.0.9/variants/esp32",
                 "/home/martin/.arduino15/packages/esp32/hardware/esp32/2.0.9/libraries/BluetoothSerial/src",
+                "/home/martin/.arduino15/packages/esp32/hardware/esp32/2.0.9/libraries/WiFi/src",
                 "/home/martin/.arduino15/packages/esp32/tools/xtensa-esp32-elf-gcc/esp-2021r2-patch5-8.4.0/xtensa-esp32-elf/include/c++/8.4.0",
                 "/home/martin/.arduino15/packages/esp32/tools/xtensa-esp32-elf-gcc/esp-2021r2-patch5-8.4.0/xtensa-esp32-elf/include/c++/8.4.0/xtensa-esp32-elf",
                 "/home/martin/.arduino15/packages/esp32/tools/xtensa-esp32-elf-gcc/esp-2021r2-patch5-8.4.0/xtensa-esp32-elf/include/c++/8.4.0/backward",
