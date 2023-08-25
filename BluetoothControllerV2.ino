@@ -1,18 +1,12 @@
-/*  *********************************************
- *                                           *
- *  NO SE TILDA EL PROGRAMA, ANDA BIEN       *
- *         DISPLAY ESTÁ CON ALTO             *
- *               CONTRASTE                   *
- *                                           *
- *********************************************/
+//El programa se encarga de manejar puertos GPIO para consultar sensores
+// a través de comunicación Bluetooth
+//Proyecto Velos
 
-/*  *********************************************
- *  Para Pablo:                              *
- *  Carga bateria: (linea 431) auxbat= (int)porcentaje; porcentaje de batería. auxbat es un int                           *
- *  Velocidad: (linea 277) return aver; retorna la velocidad promedio, aver es un float								*
- *  Latitud y Longitud: (linea 279) f_get_position(&flat,&flon,&age); guarda la lat y la long
- *  en flat y flong, en formato float.
- *********************************************/
+#include "BluetoothSerial.h"
+#include "driver/gpio.h"
+#include  <stdio.h>
+#include  <string.h>
+#include <WiFi.h>
 
 // LIBRERIAS PARA GRAFICAR
 #include <Adafruit_GFX.h>
@@ -24,32 +18,30 @@
 #include <dummy.h>
 #include "SPI.h"
 
-#include <BLEDevice.h>
-#include <BLEUtils.h>
-#include <BLEServer.h>
-#include <BLE2902.h>
+// LIBRERIA PARA LEER GPS
+#include <SoftwareSerial.h>
+#include <TinyGPS.h>
 
+// libreria para ADS1115
+#include <Wire.h>
+#include <Adafruit_ADS1X15.h>
+
+//***************************
+//DEFINES
+//***************************
+
+#if !defined(CONFIG_BT_ENABLED) || !defined(CONFIG_BLUEDROID_ENABLED)
+#error Bluetooth is not enabled! Please run `make menuconfig` to and enable it
+#endif
+
+#define LED_BUILTIN 2
+#define pinMotorForward 16
+#define pinMotorBack 17
+#define pinMotorLeft 18
+#define pinMotorRight 19
 // Conexiones con la pantalla
 #define TFT_DC 2
 #define TFT_CS 16
-
-// definimos el tft como nombre de la CLase ILI9341.
-Adafruit_ILI9341 tft = Adafruit_ILI9341(TFT_CS, TFT_DC);
-
-//---------COLORES----------------
-/*
-#define cfondo ILI9341_BLACK
-#define clineas ILI9341_BLUE
-#define ctexto ILI9341_YELLOW
-#define cdatos ILI9341_CYAN
-#define celice ILI9341_NAVY
-#define felice ILI9341_LIGHTGREY
-#define cbverde ILI9341_GREEN
-#define cbamarillo ILI9341_GREENYELLOW
-#define cbnaranja ILI9341_ORANGE
-#define cbrojo ILI9341_RED
-#define cvelos ILI9341_DARKCYAN
-*/
 //--------------Colores para evitar contraste------------------------
 #define cfondo ILI9341_WHITE
 #define clineas ILI9341_BLUE
@@ -63,21 +55,13 @@ Adafruit_ILI9341 tft = Adafruit_ILI9341(TFT_CS, TFT_DC);
 #define cbrojo ILI9341_RED
 #define cvelos ILI9341_WHITE
 
-// LIBRERIA PARA LEER GPS
-#include <SoftwareSerial.h>
-#include <TinyGPS.h>
+//#define lat pos[0];
+//#define lon pos[1];
 
-// defino dos puertos para transmitir por el GPS
-TinyGPS gps;
-SoftwareSerial softSerial(0, 15);
+//***************************
+//FUNCIONES
+//***************************
 
-// libreria para ADS1115
-#include <Wire.h>
-#include <Adafruit_ADS1X15.h>
-
-// definios los valores para el adc.
-Adafruit_ADS1X15 ads;
-// const float multiplicador = 0.0001869;
 
 // declaramamos las funciones generales:
 void pantallainicial();
@@ -90,227 +74,405 @@ void leerADS();
 void analisisbateria();
 void cargarbateria();
 void cargartiempo();
+void maquinaDeEstado(void);
+int validarClave(void);
+void switchCaseParametros(char, String);
+void accionarMotor(char, int);
 
-// declaramos Variables--------------
+//***************************
+//OBJETOS
+//***************************
+
+BluetoothSerial SerialBT;
+// definimos el tft como nombre de la CLase ILI9341.
+Adafruit_ILI9341 tft = Adafruit_ILI9341(TFT_CS, TFT_DC);
+// defino dos puertos para transmitir por el GPS
+TinyGPS gps;
+SoftwareSerial softSerial(0, 15);
+// definios los valores para el adc.
+Adafruit_ADS1X15 ads;
+// const float multiplicador = 0.0001869;
+
+
+//***************************
+//VARIABLES
+//***************************
+
+String strBT = "";
+String clave = "1234";
+int retornoClave = 0;
+
+int cuentaForwardBack = 0;
+int cuentaLeftRight = 0;
+
+int lati;
+int loni;
+int veli;
+int bati;
+
+String mac = {};
+
 int velocidad = 0, control, auxbat = 0, i = 0, timeminutos, contadordecontrol = 0;
 int16_t adc0, adc1;
 float auxiliar, velaux = 0, Vo = 0, Ao = 0, corriente, timehoras, corrientetotal, tension, primermedida;
 float volt1, volt0, y, x, porcentaje, aver;
 char linea[150], vel[10];
 float matrizcorriente[5][7] = {{4.03, 0.94, 4.03, 3.09, 0.94, 4.03, 2.15}, {4.005, 0.945, 4.005, 3.06, 0.93, 3.86, 2.13}, {3.98, 0.97, 3.98, 3.01, 0.98, 3.99, 2.03}, {3.91, 1, 3.91, 2.91, 1.02, 3.93, 1.89}, {3.83, 1.02, 3.83, 2.81, 1.03, 3.84, 1.78}};
-float aceleracion = 0;
-int desplazamiento = 0;
-
 // PARA LA LECTURA DEL GPS
 double pos[2]={0};
-#define lat pos[0];
-#define lon pos[1];
-
-#define SERVICE_UUID "4fdc2362-1e72-11ee-be56-0242ac120002"
-#define CHARACTERISTIC_GAMEPAD_UUID "58d3d514-1e72-11ee-be56-0242ac120002"
-#define CHARACTERISTIC_VELOCITY_UUID "5d269868-1e72-11ee-be56-0242ac120002"
-#define CHARACTERISTIC_BATTERY_UUID "64bd7286-1e72-11ee-be56-0242ac120002"
-#define CHARACTERISTIC_LATITUDE_UUID "6be2ff7c-1e72-11ee-be56-0242ac120002"
-#define CHARACTERISTIC_LONGITUDE_UUID "71120a60-1e72-11ee-be56-0242ac120002"
-#define CHARACTERISTIC_TEMP_UUID "65f30ddc-9b0f-4e3f-a1fc-a2def39e124f"
-
-
-BLEServer* pServer = NULL;
-BLECharacteristic* gamepadCharacteristic = NULL;
-BLECharacteristic* velocitydCharacteristic = NULL;
-BLECharacteristic* batteryCharacteristic = NULL;
-BLECharacteristic* latitudeCharacteristic = NULL;
-BLECharacteristic* longitudeCharacteristic = NULL;
-BLECharacteristic* temperatureCharacteristic = NULL;
-bool deviceConnected = false;
-bool oldDeviceConnected = false;
-
-/*Verifico si se ha conectado el dispositivo*/
-class MyServerCallbacks : public BLEServerCallbacks {
-  void onConnect(BLEServer* pServer) {
-    deviceConnected = true;
-  };
-
-  void onDisconnect(BLEServer* pServer) {
-    deviceConnected = false;
-  }
-};
-
-/*MyCallbacks Recibe la entrada enviada por el dispositivo y la muestra por el monitor*/
-class MyCallbacks : public BLECharacteristicCallbacks {
-  void onWrite(BLECharacteristic* pCharacteristic) {
-    std::string value = gamepadCharacteristic->getValue();
-
-    if (value.length() > 0) {
-      Serial.println("*********");
-      Serial.print("Nuevo valor: ");
-      for (int i = 0; i < value.length(); i++)
-        Serial.print(value[i]);
-
-      Serial.println();
-      Serial.println("*********");
-
-      // Realizar lógica condicional basada en el valor de la cadena
-      if (value == "U") {
-        aceleracion++;
-        Serial.print("Aceleracion: ");
-        Serial.println(aceleracion);
-        gamepadCharacteristic->setValue(value.c_str());
-      } else if (value == "D") {
-        aceleracion--;
-        Serial.print("Aceleracion: ");
-        Serial.println(aceleracion);
-        gamepadCharacteristic->setValue(value.c_str());
-      } else if (value == "R") {
-        desplazamiento++;
-        Serial.print("Desplazamiento: ");
-        Serial.println(desplazamiento);
-        gamepadCharacteristic->setValue(value.c_str());
-      } else if (value == "L") {
-        desplazamiento--;
-        Serial.print("Desplazamiento: ");
-        Serial.println(desplazamiento);
-        gamepadCharacteristic->setValue(value.c_str());
-      } else if (value == "S") {
-        desplazamiento--;
-        Serial.print("El motor se ha detenido: ");
-        gamepadCharacteristic->setValue(value.c_str());
-      }
-    }
-  }
-};
+double lat = pos[0];
+double lon = pos[1];
+int flat = 25;
+int flon = 26;
+int temperature;
 
 
 
 
+void setup() {
+    
+	Serial.begin(9600);
+	softSerial.begin(9600);
+	Wire.begin();
 
-/*
+	mac = WiFi.macAddress();
+	Serial.println(mac);
 
-gamePad: "58d3d514-1e72-11ee-be56-0242ac120002",
-  velocity: "5d269868-1e72-11ee-be56-0242ac120002",
-  battery: "64bd7286-1e72-11ee-be56-0242ac120002",
-  latitude: "6be2ff7c-1e72-11ee-be56-0242ac120002",
-  longitude: "71120a60-1e72-11ee-be56-0242ac120002",
-*/
-void setup()
-{
+	//String nombre = "ESP32-BTControllerNEW " + mac;
+	String nombre = "ESP32-MNC";
+	Serial.println(nombre);
+	//SerialBT.begin("ESP32-BTController"); //Bluetooth device name
+	SerialBT.begin(nombre); //Bluetooth device name
+  	Serial.println("The device started, now you can pair it with bluetooth!");
+    //validarClave();
+      
+    pinMode(LED_BUILTIN, OUTPUT);
+	pinMode(pinMotorBack, OUTPUT);
+	pinMode(pinMotorForward, OUTPUT);
+	pinMode(pinMotorLeft, OUTPUT);
+	pinMode(pinMotorRight, OUTPUT);
+	delay(10000);
+	
 	//tft.begin();
 	//tft.setRotation(2);
 	//pantallainicial();
 	//pantallageneral();
-	Serial.begin(9600);
-	softSerial.begin(9600);
-	Wire.begin();
 	//ads.setGain(GAIN_ONE); // +/- 4.096V  1 bit = 0.125mV
 	//ads.begin();
-	delay(10000);
-	//primerlecturaADS();
+  	  
+	primerlecturaADS();
 
-	/*Inicializo el nombre del dispositivo*/
-	BLEDevice::init("VelosJoystick2");
-	BLEServer *pServer = BLEDevice::createServer();
 
-	/*Se crea el servicio del BLE y se le asigna el UUID*/
-	BLEService *pService = pServer->createService(SERVICE_UUID);
-
-	/*Se crean características con sus respectivos permisos*/
-	gamepadCharacteristic = pService->createCharacteristic(
-		CHARACTERISTIC_GAMEPAD_UUID,
-		BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_WRITE | BLECharacteristic::PROPERTY_NOTIFY | BLECharacteristic::PROPERTY_INDICATE);
-	velocitydCharacteristic = pService->createCharacteristic(
-		CHARACTERISTIC_VELOCITY_UUID,
-		BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_WRITE | BLECharacteristic::PROPERTY_NOTIFY | BLECharacteristic::PROPERTY_INDICATE);
-	batteryCharacteristic = pService->createCharacteristic(
-		CHARACTERISTIC_BATTERY_UUID,
-		BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_NOTIFY | BLECharacteristic::PROPERTY_INDICATE);
-	latitudeCharacteristic = pService->createCharacteristic(
-		CHARACTERISTIC_LATITUDE_UUID,
-		BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_NOTIFY | BLECharacteristic::PROPERTY_INDICATE);
-	longitudeCharacteristic = pService->createCharacteristic(
-		CHARACTERISTIC_LONGITUDE_UUID,
-		BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_WRITE | BLECharacteristic::PROPERTY_NOTIFY | BLECharacteristic::PROPERTY_INDICATE);
-	temperatureCharacteristic = pService->createCharacteristic(
-		CHARACTERISTIC_TEMP_UUID,
-		BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_WRITE | BLECharacteristic::PROPERTY_NOTIFY | BLECharacteristic::PROPERTY_INDICATE);
-
-	// Create a BLE Descriptor
-	gamepadCharacteristic->addDescriptor(new BLE2902());
-	temperatureCharacteristic->addDescriptor(new BLE2902());
-	batteryCharacteristic->addDescriptor(new BLE2902());
-	latitudeCharacteristic->addDescriptor(new BLE2902());
-	longitudeCharacteristic->addDescriptor(new BLE2902());
-	velocitydCharacteristic->addDescriptor(new BLE2902());
-
-	/*Creo los descriptores para poder almacenar valores*/
-
-	/*Asigno el gestor de respuesta a la característica gamepad*/
-	gamepadCharacteristic->setCallbacks(new MyCallbacks());
-
-	/*Asigno los valores iniciales a las características*/
-	gamepadCharacteristic->setValue("S");
-	velocitydCharacteristic->setValue("0");
-	batteryCharacteristic->setValue("100");
-	latitudeCharacteristic->setValue("00.000000");
-	longitudeCharacteristic->setValue("00.000000");
-	temperatureCharacteristic->setValue("25.00");
-
-	/*Inicializo el servicio*/
-	pService->start();
-
-	// Start advertising
-	BLEAdvertising* pAdvertising = BLEDevice::getAdvertising();
-	pAdvertising->addServiceUUID(pService->getUUID());
-	pAdvertising->setScanResponse(false);
-	pAdvertising->setMinPreferred(0x06);  // set value to 0x00 to not advertise this parameter
-
-	BLEDevice::startAdvertising();
-	Serial.println("Esperando una conexión del cliente para notificar...");
+  
 }
 
-void loop()
-{
-	Serial.print("la primer medición de corriente es: ");
-	Serial.println(primermedida);
-	//--------------------Programa de Lectura GPS-------------------
-	//velaux = leergps();
-	//velocidad = velaux;
-	velocidad = 51;
-	Serial.println(velocidad);
-	//cargarvelocidad(velocidad);
-	//-------------------Analisis de la Bateria---------------------
-	//leerADS();
-	//analisisbateria();
-	//cargarbateria();
-	//cargartiempo();
+void loop() {
+
+/*
+	while(retornoClave == 0){
+		retornoClave = validarClave();
+		
+		if(retornoClave == 1){
+			SerialBT.println("Comandos aceptados: ");
+			SerialBT.println("F, B, L, R");
+			
+		}
+		delay(10000);
+	}
+*/	
+	lati = random (0,20);
+	loni = random (0,20);
+	veli = random (0,8);
+	bati = random (0,99);
+	
+  
+    maquinaDeEstado();
+
+}
+
+void maquinaDeEstado(void){
+
+
+	SerialBT.print (lati);
+	SerialBT.print ("|");
+	SerialBT.print (loni);
+	SerialBT.print ("|");
+	SerialBT.print (veli);
+	SerialBT.print ("|");
+	SerialBT.print (bati);
 	delay(1000);
 
-	//velocitydCharacteristic->setValue(velocidad);
-	velocitydCharacteristic->setValue("100");
-	latitudeCharacteristic->setValue("50");
 
-	// notify changed value
-	if (deviceConnected) {
-		gamepadCharacteristic->notify();
-		velocitydCharacteristic->notify();
-		batteryCharacteristic->notify();
-		latitudeCharacteristic->notify();
-		longitudeCharacteristic->notify();
-		temperatureCharacteristic->notify();
-		delay(1000);
+    if (SerialBT.available()) {
+
+		strBT = SerialBT.readStringUntil('\n');//lee del puerto serie
+
+
+
+		char param = strBT.charAt(0);//obtiene el parámetro
+		//String valor = strBT.substring(1);//obtiene el valor
+
+		Serial.print("comando = ");
+		Serial.println(param);
+
+		//Serial.print("valor = ");
+		//Serial.println(valor);
+
+		switchCaseParametros(param, "1");//resuelve en base al parámetro y valor pasados
+
+		strBT = "";//se deja limpio para la próxima lectura
+
+
+
+	}
+   
+  
+}
+
+int validarClave(void){
+
+    char flagReintentar = 1;
+	String claveIngresada = {};
+	int cantidadReintentos = 0;
+
+    Serial.println("Ingrese la clave del sistema");
+	SerialBT.println("Ingrese la clave del sistema");
+
+	//while(flagReintentar == 1 && cantidadReintentos < 3){
+
+		while (SerialBT.available() > 0) {
+
+			claveIngresada = SerialBT.readStringUntil('\n');
+
+			//claveIngresada.replace('2','9');//Se filtra el caracter LF
+			claveIngresada.remove(4);//se agrega el NULL para cortar el string
+			//claveIngresada.replace('\n','\0');//Se filtra el caracter CR
+			//claveIngresada.setCharAt(4, '\0');//se agrega el NULL para cortar el string
+			Serial.println("CLAVE INGRESADA = ");
+			Serial.println(claveIngresada);
+			SerialBT.println("CLAVE INGRESADA = ");
+			SerialBT.println(claveIngresada);
+
+			if(claveIngresada == clave){
+
+				Serial.println("CLAVE CORRECTA");
+				SerialBT.println("CLAVE CORRECTA");
+				//flagReintentar = 0;
+				return 1;
+
+			}else{
+				
+				Serial.println("CLAVE INCORRECTA, INTENTE DE NUEVO");
+				SerialBT.println("CLAVE INCORRECTA, INTENTE DE NUEVO");
+				//flagReintentar = 1;
+				//cantidadReintentos++;
+				//Serial.println("Se superó la cantidad de intentos. Debe resetear el sistema");
+				//SerialBT.println("Se superó la cantidad de intentos. Debe resetear el sistema");
+				return 0;
+			}
+
+
+			claveIngresada = "";//se borra la clave ingresada para un futuro ingreso
+
+
+		}
+
+		return 0;
+
+
+
+	//}
+
+
+  
+}
+
+
+void switchCaseParametros(char charParamID, String valorParam){
+
+  int inChar = 0;
+  int index = 0;
+  int valorParamLength = 0;
+  int endIndex = 0;
+  
+
+  
+  //valorParam = 
+  valorParam.replace(0x0A,'\0');//Se filtra el caracter LF
+  valorParam.replace(0x0D,'\0');//Se filtra el caracter CR
+
+  switch(charParamID){
+    //case 'F':
+	case '8':
+		if(cuentaForwardBack < 5){//aumenta o disminuye solo si esta dentro del rango permitido
+			cuentaForwardBack++;
+		}
+		
+		Serial.print("F: ");
+		Serial.println(cuentaForwardBack);
+
+		if(cuentaForwardBack == 5){
+
+			Serial.println("F Maxima");
+			SerialBT.println("F Maxima");
+
+		}
+
+		accionarMotor(charParamID, cuentaForwardBack);
+
+      //velocidad = valorParam.toInt();
+      //Serial.print("F velocidad: ");
+      //Serial.println(velocidad);
+    break;
+    //case 'B':
+	case '2':
+		if(cuentaForwardBack > -5){//aumenta o disminuye solo si esta dentro del rango permitido
+			cuentaForwardBack--;
+		}
+		
+		Serial.print("B: ");
+		Serial.println(cuentaForwardBack);
+
+
+	  	if(cuentaForwardBack == -5){
+			
+			Serial.println("B Maxima");
+			SerialBT.println("B Maxima");
+
+		}
+
+		accionarMotor(charParamID, cuentaForwardBack);	
+    break;
+
+    //case 'L':
+	case '4':
+		if(cuentaLeftRight > -5){//aumenta o disminuye solo si esta dentro del rango permitido
+			cuentaLeftRight--;
+		}
+		
+		Serial.print("L: ");
+		Serial.println(cuentaLeftRight);
+
+		if(cuentaLeftRight == -5){
+
+			Serial.println("L Maxima");
+			SerialBT.println("L Maxima");
+
+		}
+
+		accionarMotor(charParamID, cuentaLeftRight);
+
+      //velocidad = valorParam.toInt();
+      //Serial.print("F velocidad: ");
+      //Serial.println(velocidad);
+    break;
+    //case 'R':
+	case '6':
+		if(cuentaLeftRight < 5){//aumenta o disminuye solo si esta dentro del rango permitido
+			cuentaLeftRight++;
+		}
+		
+		Serial.print("R: ");
+		Serial.println(cuentaLeftRight);
+
+
+	  	if(cuentaLeftRight == 5){
+			
+			Serial.println("R Maxima");
+			SerialBT.println("R Maxima");
+
+		}	
+
+		accionarMotor(charParamID, cuentaLeftRight);
+    break;
+
+	case '5':
+		/*
+		if(cuentaLeftRight < 5){//aumenta o disminuye solo si esta dentro del rango permitido
+			cuentaLeftRight++;
+		}
+		*/
+		Serial.println("Detener");
+	
+
+		accionarMotor(charParamID, cuentaLeftRight);
+    break;
+
+	case '7':
+		/*
+		if(cuentaLeftRight < 5){//aumenta o disminuye solo si esta dentro del rango permitido
+			cuentaLeftRight++;
+		}
+		*/
+		Serial.println("Tomo Control");
+	
+
+		accionarMotor(charParamID, cuentaLeftRight);
+    break;
+
+	case '9':
+		/*
+		if(cuentaLeftRight < 5){//aumenta o disminuye solo si esta dentro del rango permitido
+			cuentaLeftRight++;
+		}
+		*/
+		Serial.println("Doy Control");
+	
+
+		accionarMotor(charParamID, cuentaLeftRight);
+    break;
+
+    default:
+      Serial.println("Parámetro incorrecto");
+    break;
+
+  }  
+}
+
+
+void accionarMotor(char param, int cuenta){
+
+	switch (param)
+	{
+	case 'F':
+		//apagar LEDs de señalizadores que no corresponden y encender el indicado
+		digitalWrite(pinMotorLeft, LOW);
+		digitalWrite(pinMotorRight, LOW);
+		digitalWrite(pinMotorBack, LOW);
+		digitalWrite(pinMotorForward, HIGH);
+
+	break;
+	case 'B':
+		//apagar LEDs de señalizadores que no corresponden y encender el indicado
+		digitalWrite(pinMotorLeft, LOW);
+		digitalWrite(pinMotorRight, LOW);
+		digitalWrite(pinMotorBack, HIGH);
+		digitalWrite(pinMotorForward, LOW);
+
+	break;
+	case 'L':
+		//apagar LEDs de señalizadores que no corresponden y encender el indicado
+		digitalWrite(pinMotorLeft, HIGH);
+		digitalWrite(pinMotorRight, LOW);
+		digitalWrite(pinMotorBack, LOW);
+		digitalWrite(pinMotorForward, LOW);
+
+	break;
+	case 'R':
+		//apagar LEDs de señalizadores que no corresponden y encender el indicado
+		digitalWrite(pinMotorLeft, LOW);
+		digitalWrite(pinMotorRight, HIGH);
+		digitalWrite(pinMotorBack, LOW);
+		digitalWrite(pinMotorForward, LOW);
+
+	break;
+	
+	default:
+		break;
 	}
 
-	// disconnecting
-	if (!deviceConnected && oldDeviceConnected) {
-		delay(500);                   // give the bluetooth stack the chance to get things ready
-		pServer->startAdvertising();  // restart advertising
-		Serial.println("Iniciando publicidad");
-		oldDeviceConnected = deviceConnected;
-	}
-	// connecting
-	if (deviceConnected && !oldDeviceConnected) {
-		// do stuff here on connecting
-		oldDeviceConnected = deviceConnected;
-	} 
+
+
 }
 
 void pantallainicial()
@@ -435,7 +597,7 @@ void cargarvelocidad(int vel)
 		tft.print(vel);
 	}
 }
-/*
+
 float leergps()
 {
 
@@ -459,20 +621,31 @@ float leergps()
 	{
 		aver = gps.f_speed_kmph();
 		// void f_get_position(float *latitude, float *longitude, unsigned long *fix_age = 0);
-		f_get_position(&flat, &flon, &age ); // Guarda latitud y longitud
-		return aver;
+		gps.f_get_position(&flat, &flon, &age ); // Guarda latitud y longitud
+	/*
+    // Asigno el valores de aver, flat y flon a características ble
+    velocitydCharacteristic->setValue((uint8_t*)&aver, sizeof(aver));
+    latitudeCharacteristic->setValue((uint8_t*)&flat, sizeof(flat));
+    longitudeCharacteristic->setValue((uint8_t*)&flon, sizeof(flon));
+
+    // notifico valores
+    velocitydCharacteristic->notify();
+    latitudeCharacteristic->notify();
+    longitudeCharacteristic->notify();
+		
+	*/
+    return aver;
 	}
 	else
 	{
 		return -1;
 	}
 }
-*/
 
 void primerlecturaADS()
 {
-	adc1 = ads.readADC_SingleEnded(1);
-	primermedida = ads.computeVolts(adc1); // primer medida para tener referencia
+	//adc1 = ads.readADC_SingleEnded(1);
+	//primermedida = ads.computeVolts(adc1); // primer medida para tener referencia
 	Serial.print("la primer medida y referencia es: ");
 	Serial.println(primermedida);
 }
@@ -613,6 +786,11 @@ void cargarbateria()
 {
 	int auxbat = 0;
 	auxbat = (int)porcentaje; // PABLO: ESTE ES EL PORCENTAJE DE LA BATERIA
+
+/*
+  batteryCharacteristic->setValue((uint8_t*)&auxbat, sizeof(auxbat)); // Asigno el valor de auxbat a la característica
+  batteryCharacteristic->notify(); //notifico este valor
+*/
 	Serial.print("este es el nivel de Bateria: ");
 	Serial.println(auxbat);
 	if (auxbat > 99)
