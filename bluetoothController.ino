@@ -168,18 +168,19 @@ void setup() {
 
 void loop() {
 
-/*
+
 	while(retornoClave == 0){
 		retornoClave = validarClave();
-		
+		/*
 		if(retornoClave == 1){
 			SerialBT.println("Comandos aceptados: ");
 			SerialBT.println("F, B, L, R");
 			
 		}
+		*/
 		delay(10000);
 	}
-*/	
+
 	lati = random (0,20);
 	loni = random (0,20);
 	veli = random (0,8);
@@ -199,7 +200,7 @@ void maquinaDeEstado(void){
 	SerialBT.print ("|");
 	SerialBT.print (veli);
 	SerialBT.print ("|");
-	SerialBT.print (bati);
+	SerialBT.println (bati);
 	delay(1000);
 
 
@@ -236,7 +237,7 @@ int validarClave(void){
 	int cantidadReintentos = 0;
 
     Serial.println("Ingrese la clave del sistema");
-	SerialBT.println("Ingrese la clave del sistema");
+	//SerialBT.println("Ingrese la clave del sistema");
 
 	//while(flagReintentar == 1 && cantidadReintentos < 3){
 
@@ -250,20 +251,20 @@ int validarClave(void){
 			//claveIngresada.setCharAt(4, '\0');//se agrega el NULL para cortar el string
 			Serial.println("CLAVE INGRESADA = ");
 			Serial.println(claveIngresada);
-			SerialBT.println("CLAVE INGRESADA = ");
-			SerialBT.println(claveIngresada);
+			//SerialBT.println("CLAVE INGRESADA = ");
+			//SerialBT.println(claveIngresada);
 
 			if(claveIngresada == clave){
 
 				Serial.println("CLAVE CORRECTA");
-				SerialBT.println("CLAVE CORRECTA");
+				//SerialBT.println("CLAVE CORRECTA");
 				//flagReintentar = 0;
 				return 1;
 
 			}else{
 				
 				Serial.println("CLAVE INCORRECTA, INTENTE DE NUEVO");
-				SerialBT.println("CLAVE INCORRECTA, INTENTE DE NUEVO");
+				//SerialBT.println("CLAVE INCORRECTA, INTENTE DE NUEVO");
 				//flagReintentar = 1;
 				//cantidadReintentos++;
 				//Serial.println("Se superó la cantidad de intentos. Debe resetear el sistema");
